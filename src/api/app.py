@@ -16,9 +16,8 @@ from quart import (
     Quart
 )
 
-app = Quart(__name__)
-app = cors(app, allow_origin="http://localhost:3000", allow_methods=["*"])
 bp = Blueprint("app", __name__)
+app = Quart(__name__)
 
 @bp.before_app_serving
 async def configure_open_ai():
@@ -56,14 +55,18 @@ async def chat_handler():
                         )
         try:
             async for event in await chat_coroutine:
-                if event.choices:
-                    yield json.dumps(event, ensure_ascii=False) + "\n"
+                event_dict = event.model_dump()
+                if event_dict["choices"]:
+                    delta_content = event_dict["choices"][0].get("delta", {}).get("content", "")
+                    yield json.dumps({"content": delta_content}, ensure_ascii=False) + "\n"                    
+                    #yield json.dumps(event_dict["choices"][0], ensure_ascii=False) + "\n"
         except Exception as e:
             current_app.logger.error(e)
             yield json.dumps({"error": str(e)}, ensure_ascii=False) + "\n"
 
-    return Response(response_stream())
+    return Response(response_stream(), content_type='text/event-stream')
+
+cors(app, allow_origin="*", allow_methods=["*"])
 
 app.register_blueprint(bp)
-
 app.run(debug=True)
