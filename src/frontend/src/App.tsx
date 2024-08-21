@@ -1,90 +1,60 @@
 import { useEffect, useState } from "react";
-import { fetchEventSource } from "@microsoft/fetch-event-source";
+import ReactMarkdown from "react-markdown";
 import "./App.css";
 
 function App() {
   const [data, setData] = useState<string>("");
-  const serverBaseURL = " http://127.0.0.1:5000/chat/stream";
 
   useEffect(() => {
-  
     const fetchData = async () => {
+      const userUrl = "http://127.0.0.1:5000/chat/stream";
 
-      const requestBody = {
-        prompt: "Tell me the hisotry of France in 5000 words"
+      const data = {
+        "prompt": "Who is the pm of canada?"
       };
-      await fetchEventSource(`${serverBaseURL}`, {
-        method: "POST",
-        headers: { Accept: "text/event-stream", "Content-Type": "application/json"},
-        body: JSON.stringify(requestBody),
-        async onopen(res): Promise<void> {
-          if (res.ok && res.status === 200) {
-            console.log("Connection made ", res);
-          } else if (
-            res.status >= 400 &&
-            res.status < 500 &&
-            res.status !== 429
-          ) {
-            console.log("Client-side error ", res);
+
+      try {
+        const response = await fetch(userUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(data),
+        });
+
+        if (response.ok) {
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder("utf-8");
+
+          while (true) {
+            const { value, done } = (await reader?.read()) ?? { done: true };
+            if (done) break;
+
+            const lines = decoder.decode(value, { stream: true }).split("\n");
+            lines.forEach((line) => {
+              if (line.trim()) {
+                console.log("Received Line:", line);
+                const jsonResponse = JSON.parse(line);
+                setData((prevData) => prevData + jsonResponse.content);
+              }
+            });
           }
-        },
-        onmessage(event) {
-          console.log(event.data);
-          const parsedData = JSON.parse(event.data);
-          const content = parsedData.content;
-          setData((data) => data + content);
-        },
-        onclose() {
-          console.log("Connection closed by the server");
-        },
-        onerror(err) {
-          console.log("There was an error from server", err);
-        },
-      });
+        } else {
+          const errorText = await response.text();
+          console.error("Error:", errorText);
+        }
+      } catch (error) {
+        console.error("Error while processing streaming response:", error);
+      }
     };
+
     fetchData();
   }, []);
-
-  // async function sendChatRequest(
-  //   promptDTO: PromptDTO
-  // ): Promise<AIResponseDTO | undefined> {
-  //   console.log("Sending prompt: ", promptDTO);
-
-  //   try {
-  //     const response = await fetch(serverBaseURL, {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify(promptDTO),
-  //     });
-
-  //     if (!response.body) {
-  //       throw new Error("ReadableStream not supported in this environment.");
-  //     }
-
-  //     const reader = response.body.getReader();
-  //     const decoder = new TextDecoder("utf-8");
-  //     let result = "";
-
-  //     while (true) {
-  //       const { done, value } = await reader.read();
-  //       if (done) break;
-  //       result += decoder.decode(value, { stream: true });
-  //     }
-
-  //     const data: AIResponseDTO = JSON.parse(result);
-  //     return data;
-  //   } catch (error) {
-  //     console.error("Error:", error);
-  //   }
-  //   return undefined;
-  // }
 
   return (
     <>
       <h1>Content</h1>
-      <p>{data}</p>
+      <ReactMarkdown>{data}</ReactMarkdown>
     </>
   );
 }
